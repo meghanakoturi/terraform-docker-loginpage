@@ -1,8 +1,8 @@
-# Deploying a Web Application with MySQL, Tomcat, and Redis using Terraform and Docker on AWS EC2
+# Scalable Web Application Infrastructure on AWS
 
 # Introduction :
 
-This documentation provides a comprehensive guide to deploying a web application using Terraform to provision infrastructure on AWS, and Docker to manage application services. The application, a login proof-of-concept (LOGIN-POC), consists of a Java-based web application running on Tomcat, with MySQL as the database and Redis for caching. The deployment process is automated using a combination of Terraform scripts and Docker Compose, ensuring a consistent and repeatable setup. By following this guide, you will learn how to:
+This project aims to set up a scalable, highly available web application infrastructure on AWS using Terraform. The infrastructure is designed to automatically scale based on demand, ensuring reliability and performance. The setup includes containers for MySQL, Tomcat, and Redis, with instances always pulling the latest application version from GitHub.. By following this guide, you will learn how to:
 
 1. Set up the necessary AWS infrastructure using Terraform.
 2. Configure an EC2 instance to host the application.
@@ -57,18 +57,17 @@ main.tf is a Terraform configuration file that defines various AWS resources nee
    2. Allow HTTP access (port 8080) from anywhere.
    3. Allow MySQL access (port 3306) from anywhere.
    4. Allow Redis access (port 6379) from anywhere.
-   5. Allow all outbound traffic.
-- EC2 Instance: Provisions an EC2 instance with the following attributes:
-   1. AMI: Amazon Machine Image to use (update with your desired AMI ID).
-   2. Instance Type: Specifies the instance size (e.g., t3.medium).
-   3. Key Name: Name of the SSH key pair for accessing the instance.
-   4. Subnet: Associates the instance with the defined subnet.
-   5. Security Group: Attaches the defined security group to the instance.
-   6. Public IP: Associates a public IP address with the instance.
-   7. User Data: Runs the init-script.sh during instance initialization to set up the environment.
-   8 Tags: Adds a tag to name the instance "docker-host".
+   5. Allow HTTP (port 80) from anywhere
+   6. Allow all outbound traffic.
+- Launch Configuration: Defines the configuration template used by Auto Scaling to launch EC2 instances, specifying instance type, AMI, key pair, security groups, and initialization script.
+- Auto Scaling Group: Manages a group of EC2 instances that automatically scales based on policies, ensuring availability and managing instance lifecycle (creation, termination).Implement auto-scaling policies to handle increased load by terminating old instances and creating new ones with the latest changes from the Git repository.
+- Application Load Balancer (ALB) : Routes incoming HTTP/HTTPS traffic to multiple EC2 instances across multiple Availability Zones, enhancing fault tolerance and load distribution.
+- ALB Target Group: Specifies a group of instances (targets) registered with the ALB, enabling the ALB to route traffic to these instances based on configured criteria.
+- ALB Listeners: Configures the ports and protocols (HTTP/HTTPS) for the ALB to listen for incoming traffic and forward it to the associated target group.
+- CloudWatch Alarms: Monitors metrics (e.g., CPU utilization) of EC2 instances and triggers actions (e.g., scaling policies) based on predefined thresholds.
+- Auto Scaling Policies: Defines scaling policies (scaling out and scaling in) that dictate how the Auto Scaling group adjusts the number of instances based on monitored metrics.
+- Data Source (AWS Instances) : Retrieves information about instances within the Auto Scaling group, enabling referencing of these instances in other configurations or scripts.
 
-This main.tf configuration file sets up a VPC with a subnet, internet gateway, route table, security group, and an EC2 instance configured to run Docker and host your application.
 
 2. variables.tf :
 
@@ -90,20 +89,12 @@ These variables are referenced in the main.tf file and other configuration files
 outputs.tf is a Terraform configuration file that defines the output values of the Terraform setup. Outputs are used to display information about the resources created by the Terraform configuration. They are helpful for easily accessing and referencing important information, such as IP addresses or resource IDs, after the infrastructure has been provisioned.
 
 Below is a detailed explanation of the output values defined:
-- instance_public_ip: This output provides the public IP address of the EC2 instance created by the Terraform configuration.
-   1. description: Provides a human-readable description of what this output represents.
-   2. value: Specifies the actual value to be output, which is the public IP address of the EC2 instance (aws_instance.docker_host.public_ip). This value is dynamically retrieved from the created EC2 instance.
-- instance_id: This output provides the ID of the EC2 instance created by the Terraform configuration.
-   1. description: Provides a human-readable description of what this output represents.
-   2. value: Specifies the actual value to be output, which is the ID of the EC2 instance (aws_instance.docker_host.id). This value is dynamically retrieved from the created EC2 instance.
-
-- Purpose of Outputs :
-
-These outputs are useful for referencing key details of the infrastructure. For example:
-
-1. instance_public_ip can be used to connect to the EC2 instance via SSH or to access services running on it.
-2. instance_id can be used to manage or reference the specific EC2 instance within AWS.
-By defining these outputs, you can easily access important information about your infrastructure without manually looking up details in the AWS Management Console. This is especially useful for automating deployment processes or integrating with other tools.
+- Purpose: This block is used to output the public IP addresses of the instances that are part of the Auto Scaling Group. This can be useful for verification, logging, or other post-deployment activities.
+- Components:
+1. output "instance_public_ips":
+Defines the name of the output variable, which in this case is instance_public_ips.
+2. value: Specifies the value that should be output. Here, it is set to data.aws_instances.example_instances.public_ips, which refers to the public IP addresses of the instances fetched using the aws_instances data source.
+3. description: Provides a human-readable description of what this output represents. It helps to understand the purpose of the output when reviewing the Terraform configuration or the output in the terminal.
 
 4. init-script.sh :
 
@@ -244,6 +235,19 @@ Terraform updates its state file (.tfstate) with the current state of resources 
 # Notes :
 - State Management: Ensure proper state management (terraform.tfstate files) to track infrastructure changes and maintain consistency across deployments.
 - Validation: Always validate and review Terraform plan output (terraform plan) before applying changes (terraform apply) to prevent unintended modifications.
+
+# How it Works with Auto Scaling
+- First Instance Creation:
+When the Auto Scaling Group creates the first instance, the init-script.sh runs, installing Docker, Git, and Docker Compose. It clones the repository and pulls the latest changes at that time. The instance then builds and starts the Docker containers based on the pulled code.
+
+- Subsequent Instance Creations:
+For any new instances created by the Auto Scaling Group (for example, in response to increased load), the same init-script.sh runs. The script clones the repository and pulls the latest changes from the Git repository, ensuring that the instance has the most up-to-date version of the code, including any changes and commits made after the first instance was created.
+# Ensuring Consistency Across Instances
+- By using this script, you ensure that:
+The first instance gets the version of the code that exists in the Git repository at the time of its creation.
+Any subsequent instances will always pull the latest changes from the Git repository, reflecting any new commits and updates.
+All instances created by the Auto Scaling Group will have the same environment setup and run the latest version of your application.
+This approach ensures that your application remains consistent and up-to-date across all instances managed by the Auto Scaling Group.
   
 # Verification :
 - After completion, verify the infrastructure on your cloud provider's console or through command-line tools to ensure resources are provisioned correctly.
@@ -255,59 +259,75 @@ By following these steps, Terraform automates the process of infrastructure depl
 - Verification: Access the deployed application via the EC2 instance’s public IP address.
 - Ensure the application (Login.war) is accessible at http://<public_ip>:8080/.
 - Test functionality and verify database operations against MySQL (jdbc:mysql://<public_ip>:3306/loginapp).
+- Access the application through a load balancer DNS.
+( Automatically apply changes from the GitHub repository whenever they are committed.)
+
 
 # Testing :
-Testing the deployed application involves verifying its functionality, performance, and reliability. Here’s a structured approach to testing your Java web application deployed using Docker containers on AWS EC2:
-
-- Testing Approach
-1. Functional Testing
-    1. User Interface (UI):
- Login Functionality: Verify user login and authentication process.
- Dashboard: Ensure proper rendering and functionality of dashboard features (dashboard.jsp, dashboard2.jsp).
- Verification Page: Validate user verification flow (verification.jsp).
-2. Database Operations
-    1. MySQL Integration:
-Data Persistence: Confirm CRUD (Create, Read, Update, Delete) operations on login and user tables.
-SQL Queries: Test SQL queries executed by the application.
-3. Performance Testing
-    1. Load Testing:
-       Simulate Concurrent Users: Use tools like Apache JMeter to simulate multiple concurrent users accessing the application.
-Monitor Response Times: Measure response times under different load conditions to ensure acceptable performance.
-4. Security Testing
-   1. Vulnerability Scanning: Conduct security scans to identify and mitigate potential vulnerabilities.
-   2. Access Controls: Validate access controls to ensure sensitive data and functionalities are appropriately protected.
-5. Compatibility Testing
-   1. Browser Compatibility: Test the application across different web browsers (e.g., Chrome, Firefox, Safari) to ensure consistent behavior.
-   2. Device Compatibility: Check responsiveness and functionality on different devices (e.g., desktops, tablets, mobile phones).
-6. Integration Testing
-   1. External Systems: Test integration points with external services like Redis for caching.
-   2. API Integration: Validate API interactions with other components or third-party services.
-
+# Integration Testing
+- Infrastructure Validation:
+1. Objective: Ensure all AWS resources defined in Terraform are created and configured correctly.
+2. Procedure:
+     1. Deploy the infrastructure using terraform apply.
+     2. Verify the creation of VPC, subnets, Internet Gateway, route tables, security groups, and Auto Scaling configurations in the AWS Management Console.
+     3. Confirm that the Application Load Balancer (ALB) and its listeners are set up correctly.
+- Application Deployment:
+1. Objective: Ensure Docker containers for MySQL, Tomcat, and Redis are deployed and running.
+2. Procedure:
+      1. Deploy the application using Docker containers on the EC2 instances launched by the Auto Scaling Group.
+      2. Access the ALB DNS endpoint and verify that the application is accessible and functioning as expected.
+- Load Testing
+- Auto Scaling Validation:
+1. Objective: Validate that the Auto Scaling Group scales instances based on load.
+2. Procedure:
+       1. Simulate increased load on the application by generating traffic using tools like Apache JMeter or AWS Load Testing services.
+       2. Monitor CloudWatch metrics for CPU utilization and ALB response times.
+       3. Verify that the Auto Scaling Group launches new instances and terminates old instances as needed to maintain performance.
+- Continuous Integration (CI) Testing
+- Git Integration:
+1. Objective: Ensure that changes committed to the Git repository are automatically reflected in new instances.
+2. Procedure:
+       1. Make changes to the application code and configuration.
+       2. Commit and push changes to the Git repository.
+       3. Monitor instance creation and verify that new instances launched by the Auto Scaling Group pull the latest changes from the Git repository during initialization.
+   
 # Challenges faced :
-Deploying and testing a Java web application using Docker containers on AWS EC2 can present several challenges. Here are some common challenges I faced during this process:
-1. Infrastructure Configuration: Setting up and configuring the AWS infrastructure (e.g., VPC, subnet, security groups) using Terraform may require understanding AWS networking concepts and best practices.
-2. Environment Setup: Ensuring consistent and reliable environment setup across development, testing, and production environments, especially with Docker and Docker Compose configurations.
-3. Dependency Management: Managing dependencies for the Java application (e.g., Maven dependencies) and ensuring compatibility with specified Java and Docker versions.
-4. Integration Issues: Ensuring smooth integration between different components (e.g., Java application, MySQL database, Redis cache) within Docker containers and across AWS services.
-
+- Infrastructure Setup
+1. AWS Resource Limits:
+     1. Challenge: Initially faced limits on AWS resources such as VPCs, subnets, and security groups.
+     2. Resolution: Adjusted Terraform configurations to optimize resource allocation and utilized AWS service quotas management.
+- Docker Containerization
+2. Container Networking:
+     1. Challenge: Ensuring proper networking setup between MySQL, Tomcat, and Redis containers.
+     2. Resolution: Implemented Docker Compose for container orchestration and configured custom networks to facilitate communication.
+- Auto Scaling and Load Balancing
+3. Auto Scaling Policies:
+     1. Challenge: Fine-tuning Auto Scaling policies to effectively respond to varying traffic loads.
+     2. Resolution: Implemented CloudWatch alarms and adjusted scaling policies based on performance metrics to optimize instance scaling.
+- Git Integration
+4. Git Repository Synchronization:
+     1. Challenge: Ensuring new instances pull the latest application code from the Git repository.
+     2. Resolution: Developed a custom initialization script in the launch configuration to automate Git repository synchronization during instance startup.
+        
 # Conclusion :
-In conclusion, deploying a Java web application using Docker containers on AWS EC2 involves integrating various technologies and navigating through several challenges. By leveraging Terraform for infrastructure provisioning, Docker for containerized deployments, and AWS services for scalability and reliability, we've established a robust environment capable of hosting and managing our application effectively.
 
-Throughout this documentation, we've explored:
+In conclusion, the implementation of this scalable and highly available web application infrastructure on AWS using Terraform has demonstrated several key achievements and insights:
 
-- Technologies Used: Highlighting the key technologies such as Java, Docker, MySQL, Tomcat, Redis, and AWS services like EC2 and VPC.
+1. Scalability and Elasticity: By leveraging AWS Auto Scaling and Application Load Balancer, the infrastructure dynamically adjusts to varying traffic loads, ensuring optimal performance and resource utilization.
 
-- Project Directory Structure: Detailing how the project is organized, including configurations for Docker, Terraform, and Java application files.
+2. High Availability: The setup of multiple Availability Zones for subnets, coupled with automated failover mechanisms, enhances application availability and resilience against infrastructure failures.
 
-- Deployment Process: Step-by-step instructions on using Terraform to provision AWS infrastructure, deploy Docker containers, and configure the application environment.
+3. Infrastructure as Code (IaC): Adopting Terraform for provisioning and managing infrastructure has streamlined deployment processes and enabled consistent, repeatable deployments across development, staging, and production environments.
 
-- Testing and Validation: Strategies for testing the deployed application, including functional, performance, security, and compatibility testing using various tools.
+4. Containerized Deployment: Utilizing Docker containers for MySQL, Tomcat, and Redis has facilitated easier application deployment and management, enhancing flexibility and scalability.
 
-- Challenges Faced: Identifying common challenges in infrastructure setup, environment configuration, integration, security, and scalability, and providing insights into overcoming these obstacles.
+5. Continuous Integration/Continuous Deployment (CI/CD): Integrating Git repository synchronization with instance initialization ensures that new instances always deploy the latest application version, promoting rapid iteration and deployment cycles.
 
-Moving forward, continuous monitoring, optimization, and iterative improvements will be essential to maintain application performance and reliability. By implementing best practices in deployment automation, security, and scalability, we ensure that our Java web application on AWS EC2 remains efficient and resilient in meeting business requirements.
+6. Security and Compliance: Implementing secure access controls through AWS Security Groups and maintaining compliance with best practices for cloud infrastructure security has ensured a robust and protected environment.
 
-This documentation serves as a comprehensive guide, empowering stakeholders and team members with the knowledge to manage, enhance, and scale the deployed application effectively. It underscores the importance of robust deployment strategies and proactive management in achieving long-term success in cloud-based application hosting.
+7. Documentation and Knowledge Sharing: Documenting infrastructure configurations, deployment procedures, and challenges faced has fostered knowledge sharing among team members and facilitated ongoing maintenance and support.
+
+Moving forward, continuous monitoring and periodic review of infrastructure performance metrics will be essential to optimize resource usage and maintain high availability. This project serves as a foundation for future enhancements and scalability, aligning with industry best practices in cloud architecture and DevOps methodologies.
 
 
 
