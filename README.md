@@ -2,15 +2,24 @@
 
 # Introduction :
 
-This project aims to set up a scalable, highly available web application infrastructure on AWS using Terraform. The infrastructure is designed to automatically scale based on demand, ensuring reliability and performance. The setup includes containers for MySQL, Tomcat, and Redis, with instances always pulling the latest application version from GitHub.. By following this guide, you will learn how to:
+This project aims to set up a scalable, highly available web application infrastructure on AWS using Terraform. The infrastructure is designed to automatically scale based on demand, ensuring reliability and performance. The setup includes containers for MySQL, Tomcat, and Redis, with instances always pulling the latest application version from GitHub. The application will be accessed via a load balancer.
 
+- Key Features
+1. Scalable Infrastructure: Automatically scales up or down based on demand using AWS Auto Scaling.
+2. Highly Available: Deploys the application across multiple Availability Zones for increased availability.
+3. Containerized Environment: Uses Docker to manage containers for MySQL, Tomcat, and Redis.
+4. Automated Deployment: Automatically pulls the latest version of the application from GitHub and deploys it.
+5. Load Balancing: Uses an Application Load Balancer (ALB) to distribute traffic and provide a single access point.
+6. Infrastructure as Code: Uses Terraform to manage and provision the AWS infrastructure.
+   
+- Learning Outcomes
+By following this guide, you will learn how to:
 1. Set up the necessary AWS infrastructure using Terraform.
 2. Configure an EC2 instance to host the application.
 3. Deploy the application using Docker containers.
 4. Manage dependencies and environment variables effectively.
 5. Ensure secure access and proper configuration of the services.
-   
-The guide is intended for developers and DevOps engineers looking to streamline their deployment process and leverage infrastructure as code (IaC) practices for better management and scalability of their applications.
+6. Access the application through a load balancer DNS.
 
 # Technologies Used :
 - AWS EC2: Amazon Elastic Compute Cloud (EC2) is used to provision and manage virtual servers in the cloud. EC2 instances provide scalable computing capacity, allowing you to deploy and run applications with ease.
